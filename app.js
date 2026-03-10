@@ -1129,28 +1129,37 @@ function renderList(filter) {
 
   c.innerHTML = visible.map(id => {
     const m = movies[id];
+    const swipeAttr = filter === "watchlist" ? `data-swipeable="1" data-id="${id}"` : "";
     if (!m) return `
-    <div class="list-item">
-      <div class="list-thumb-ph">🎬</div>
-      <div class="list-info">
-        <div class="list-title" style="color:#475569">Filme #${id}</div>
-        <div class="list-meta" style="font-size:11px;color:#334155">dados offline · abrindo o app sincroniza</div>
+    <div class="list-item-wrap" ${swipeAttr}>
+      ${filter === "watchlist" ? `<div class="list-swipe-hint list-swipe-love">❤️ Amei</div><div class="list-swipe-hint list-swipe-nope">👎 Odiei</div>` : ""}
+      <div class="list-item">
+        <div class="list-thumb-ph">🎬</div>
+        <div class="list-info">
+          <div class="list-title" style="color:#475569">Filme #${id}</div>
+          <div class="list-meta" style="font-size:11px;color:#334155">dados offline</div>
+        </div>
+        <button class="list-remove" onclick="removeRating('${id}','${filter}')">×</button>
       </div>
-      <button class="list-remove" onclick="removeRating('${id}','${filter}')">×</button>
     </div>`;
     return `
-    <div class="list-item">
-      ${m.poster ? `<img class="list-thumb" src="${m.poster}" alt="${m.title}"/>` : `<div class="list-thumb-ph">🎬</div>`}
-      <div class="list-info">
-        <div class="list-title">${m.title}</div>
-        <div class="list-meta">${m.year || ""}${m.genre ? " · "+m.genre : ""}${m.rating ? " · ⭐"+m.rating : ""}${m.type==="tv" ? " · 📺" : ""}</div>
+    <div class="list-item-wrap" ${swipeAttr}>
+      ${filter === "watchlist" ? `<div class="list-swipe-hint list-swipe-love">❤️ Amei</div><div class="list-swipe-hint list-swipe-nope">👎 Odiei</div>` : ""}
+      <div class="list-item">
+        ${m.poster ? `<img class="list-thumb" src="${m.poster}" alt="${m.title}"/>` : `<div class="list-thumb-ph">🎬</div>`}
+        <div class="list-info">
+          <div class="list-title">${m.title}</div>
+          <div class="list-meta">${m.year || ""}${m.genre ? " · "+m.genre : ""}${m.rating ? " · ⭐"+m.rating : ""}${m.type==="tv" ? " · 📺" : ""}</div>
+        </div>
+        <button class="list-remove" onclick="removeRating('${m.id}','${filter}')">×</button>
       </div>
-      <button class="list-remove" onclick="removeRating('${m.id}','${filter}')">×</button>
     </div>`;
   }).join("")
     + (hasMore
         ? `<button class="load-more-btn" onclick="loadMoreList('${filter}')">Ver mais (${total - visible.length} restantes)</button>`
         : `<div class="list-total">${total} ${total === 1 ? "item" : "itens"}</div>`);
+
+  if (filter === "watchlist") setupListSwipe(filter);
 }
 
 function loadMoreList(filter) {
@@ -1163,6 +1172,82 @@ function removeRating(id, filter) {
   saveToFirebase();
   updateStats();
   renderList(filter);
+
+}
+
+function setupListSwipe(filter) {
+  document.querySelectorAll(".list-item-wrap[data-swipeable]").forEach(wrap => {
+    const id   = wrap.dataset.id;
+    const item = wrap.querySelector(".list-item");
+    const hintLove = wrap.querySelector(".list-swipe-love");
+    const hintNope = wrap.querySelector(".list-swipe-nope");
+    let startX = 0, startY = 0, dx = 0, dragging = false, decided = false;
+
+    function onStart(x, y) {
+      startX = x; startY = y; dx = 0; dragging = true; decided = false;
+      item.style.transition = "none";
+    }
+    function onMove(x, y) {
+      if (!dragging) return;
+      dx = x - startX;
+      const dy = Math.abs(y - startY);
+      // Se moveu mais vertical que horizontal, cancela
+      if (dy > Math.abs(dx) && Math.abs(dx) < 10) { dragging = false; reset(); return; }
+      item.style.transform = `translateX(${dx}px)`;
+      const ratio = Math.min(Math.abs(dx) / 100, 1);
+      if (dx > 0) {
+        hintLove.style.opacity = ratio;
+        hintNope.style.opacity = 0;
+        wrap.style.background = `rgba(74,222,128,${ratio * 0.15})`;
+      } else {
+        hintNope.style.opacity = ratio;
+        hintLove.style.opacity = 0;
+        wrap.style.background = `rgba(248,113,113,${ratio * 0.15})`;
+      }
+    }
+    function onEnd() {
+      if (!dragging) return;
+      dragging = false;
+      if (Math.abs(dx) > 90) {
+        const val = dx > 0 ? "loved" : "disliked";
+        const dir = dx > 0 ? "120%" : "-120%";
+        item.style.transition = "transform 0.3s ease, opacity 0.3s ease";
+        item.style.transform  = `translateX(${dir})`;
+        item.style.opacity    = "0";
+        if (navigator.vibrate) navigator.vibrate([30, 15, 50]);
+        setTimeout(() => {
+          ratings[String(id)] = val;
+          saveToFirebase(); updateStats();
+          renderList(filter);
+          toast(val === "loved" ? "❤️ Amei · " + (movies[id]?.title || "") : "👎 Não curti · " + (movies[id]?.title || ""));
+        }, 280);
+      } else {
+        reset();
+      }
+    }
+    function reset() {
+      item.style.transition = "transform 0.3s cubic-bezier(.34,1.56,.64,1)";
+      item.style.transform  = "translateX(0)";
+      item.style.opacity    = "1";
+      hintLove.style.opacity = 0;
+      hintNope.style.opacity = 0;
+      wrap.style.background  = "";
+    }
+
+    wrap.addEventListener("touchstart", e => onStart(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+    wrap.addEventListener("touchmove",  e => {
+      const curDx = e.touches[0].clientX - startX;
+      const curDy = Math.abs(e.touches[0].clientY - startY);
+      // Só previne scroll se for swipe horizontal
+      if (Math.abs(curDx) > curDy) e.preventDefault();
+      onMove(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    wrap.addEventListener("touchend",   () => onEnd());
+    wrap.addEventListener("mousedown",  e => onStart(e.clientX, e.clientY));
+    wrap.addEventListener("mousemove",  e => { if (dragging) onMove(e.clientX, e.clientY); });
+    wrap.addEventListener("mouseup",    () => onEnd());
+    wrap.addEventListener("mouseleave", () => { if (dragging) { dragging = false; reset(); } });
+  });
 }
 
 // ── QUIZ ───────────────────────────────────────────

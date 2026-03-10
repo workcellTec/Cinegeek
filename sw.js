@@ -1,49 +1,42 @@
-const CACHE = "cinegeek-v2";
-
-// Arquivos base para funcionar offline
-const ASSETS = [
-  "./",
-  "./index.html",
-  "./style.css",
-  "./app.js",
-  "./config.js",
-  "./manifest.json"
-];
+const CACHE = "cinegeek-v4";
+const CORE  = ["./index.html", "./style.css", "./app.js", "./config.js", "./manifest.json"];
+const API   = ["api.", "tmdb", "groq", "firebase", "googleapis"];
 
 self.addEventListener("install", e => {
-  self.skipWaiting();
-  // Faz o cache dos arquivos essenciais na instalação
-  e.waitUntil(
-    caches.open(CACHE).then(c => {
-      return c.addAll(ASSETS).catch(err => console.warn("Aviso: Alguns arquivos não foram cacheados", err));
-    })
-  );
+  self.skipWaiting(); // força ativação imediata sem esperar fechar abas
 });
 
 self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-  ));
-  self.clients.claim();
+  e.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim()) // assume controle de todas as abas imediatamente
+  );
 });
 
 self.addEventListener("fetch", e => {
-  // Ignora chamadas de API (Firebase, TMDB, Groq)
-  if (e.request.url.includes("api.") || e.request.url.includes("tmdb") || e.request.url.includes("groq") || e.request.url.includes("firebase")) return;
-  
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      return cached || fetch(e.request).then(res => {
-        // Guarda novos arquivos no cache dinamicamente
-        if (res && res.status === 200 && res.type === "basic") {
+  const url = e.request.url;
+
+  // APIs externas: nunca intercepta
+  if (API.some(a => url.includes(a))) return;
+
+  const isCore = CORE.some(f => url.includes(f.replace("./", "")));
+
+  if (isCore) {
+    // Arquivos principais: SEMPRE rede primeiro, cache só se offline
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));
-        }
-        return res;
-      });
-    }).catch(() => {
-      // Fallback básico caso esteja offline e não tenha no cache
-      return caches.match("./index.html");
-    })
-  );
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+  } else {
+    // Resto: cache primeiro
+    e.respondWith(
+      caches.match(e.request).then(cached => cached || fetch(e.request))
+    );
+  }
 });
