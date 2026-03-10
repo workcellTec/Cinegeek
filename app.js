@@ -22,7 +22,8 @@ const TV_GENRES_PT = {
 
 // ── State ──────────────────────────────────────────
 let deviceId    = null;
-let ratings     = {};   // loved | disliked | meh | skip | watchlist
+let ratingsStore = { movie: {}, tv: {} }; // separado por tipo
+let ratings      = ratingsStore.movie;    // aponta pro tipo ativo
 let movies      = {};
 let queue       = [];
 let page        = 1;
@@ -184,9 +185,10 @@ function renderPerfil() {
   const display = deviceId.replace(/^u_/, "").replace(/_/g, " ");
   el.textContent = display;
   // count stats
-  const loved    = Object.values(ratings).filter(v => v === "loved").length;
-  const watchlist= Object.values(ratings).filter(v => v === "watchlist").length;
-  const total    = Object.values(ratings).filter(v => ["loved","meh","disliked"].includes(v)).length;
+  const allVals  = [...Object.values(ratingsStore.movie), ...Object.values(ratingsStore.tv)];
+  const loved    = allVals.filter(v => v === "loved").length;
+  const watchlist= allVals.filter(v => v === "watchlist").length;
+  const total    = allVals.filter(v => ["loved","meh","disliked"].includes(v)).length;
   const existing = document.querySelector(".perfil-stats-mini");
   if (!existing) {
     const statsEl = document.createElement("div");
@@ -260,23 +262,26 @@ async function loadFromFirebase() {
     if (!res.ok) return;
     const data = await res.json();
     if (data) {
-      // IDB tem prioridade — pode ter dados mais recentes que o Firebase
-      const idbRatings = await _idbGet("ratings").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
-      const idbMovies  = await _idbGet("movies").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
-      // Merge: Firebase base + IDB local por cima (IDB é sempre mais recente)
-      ratings = { ...(data.ratings || {}), ...idbRatings };
-      movies  = { ...(data.movies  || {}), ...idbMovies, ...movies };
-      // Persiste merged de volta no IDB
-      await _idbSet("ratings", JSON.stringify(ratings));
-      await _idbSet("movies",  JSON.stringify({ ...(data.movies || {}), ...idbMovies }));
+      const idbRM = await _idbGet("ratings_movie").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
+      const idbRT = await _idbGet("ratings_tv").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
+      const idbMov = await _idbGet("movies").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
+      ratingsStore.movie = { ...(data.ratings_movie || data.ratings || {}), ...idbRM };
+      ratingsStore.tv    = { ...(data.ratings_tv    || {}),                 ...idbRT };
+      ratings = ratingsStore[mediaType === "tv" ? "tv" : "movie"];
+      movies  = { ...(data.movies || {}), ...idbMov, ...movies };
+      await _idbSet("ratings_movie", JSON.stringify(ratingsStore.movie));
+      await _idbSet("ratings_tv",    JSON.stringify(ratingsStore.tv));
+      await _idbSet("movies", JSON.stringify({ ...(data.movies || {}), ...idbMov }));
     }
   } catch(e) {
-    // Firebase falhou → tenta recuperar do IndexedDB local
     try {
-      const r = await _idbGet("ratings");
-      const m = await _idbGet("movies");
-      if (r) ratings = JSON.parse(r);
-      if (m) movies  = { ...movies, ...JSON.parse(m) };
+      const rm = await _idbGet("ratings_movie");
+      const rt = await _idbGet("ratings_tv");
+      const m  = await _idbGet("movies");
+      if (rm) ratingsStore.movie = JSON.parse(rm);
+      if (rt) ratingsStore.tv    = JSON.parse(rt);
+      ratings = ratingsStore[mediaType === "tv" ? "tv" : "movie"];
+      if (m)  movies = { ...movies, ...JSON.parse(m) };
     } catch {}
     console.warn("Firebase load error, using local cache:", e.message);
   }
@@ -286,14 +291,14 @@ let _saveTimer = null;
 
 function saveToFirebase() {
   if (!deviceId) return;
-  // Salva IDB IMEDIATAMENTE (fonte de verdade local)
   const ratedMovies = {};
-  Object.keys(ratings).forEach(id => { if (movies[id]) ratedMovies[id] = movies[id]; });
-  _idbSet("ratings", JSON.stringify(ratings));
-  _idbSet("movies",  JSON.stringify(ratedMovies));
+  // Salva movies de ambos os tipos
+  [...Object.keys(ratingsStore.movie), ...Object.keys(ratingsStore.tv)]
+    .forEach(id => { if (movies[id]) ratedMovies[id] = movies[id]; });
+  _idbSet("ratings_movie", JSON.stringify(ratingsStore.movie));
+  _idbSet("ratings_tv",    JSON.stringify(ratingsStore.tv));
+  _idbSet("movies",        JSON.stringify(ratedMovies));
 
-  // Debounce Firebase — espera 800ms de inatividade antes de enviar
-  // Evita race condition quando usuário adiciona vários filmes em sequência
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => _pushToFirebase(ratedMovies), 800);
 }
@@ -301,23 +306,17 @@ function saveToFirebase() {
 async function _pushToFirebase(ratedMovies) {
   if (!deviceId) return;
   try {
-    // Merge IDB com o que está em memória para garantir consistência total
-    const cached = await _idbGet("ratings").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
-    const mergedRatings = { ...cached, ...ratings };
-    const cachedMovies  = await _idbGet("movies").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
-    const mergedMovies  = { ...cachedMovies, ...ratedMovies };
-    // Remove filmes que não têm mais rating
-    Object.keys(mergedMovies).forEach(id => { if (!mergedRatings[id]) delete mergedMovies[id]; });
+    const cachedRM = await _idbGet("ratings_movie").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
+    const cachedRT = await _idbGet("ratings_tv").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
+    const mergedRM = { ...cachedRM, ...ratingsStore.movie };
+    const mergedRT = { ...cachedRT, ...ratingsStore.tv };
+    const cachedMov = await _idbGet("movies").then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
+    const mergedMov = { ...cachedMov, ...ratedMovies };
 
-    await fetch(`${FB_URL}/users/${deviceId}/ratings.json`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(mergedRatings)
-    });
-    await fetch(`${FB_URL}/users/${deviceId}/movies.json`, {
+    await fetch(`${FB_URL}/users/${deviceId}.json`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(mergedMovies)
+      body: JSON.stringify({ ratings_movie: mergedRM, ratings_tv: mergedRT, movies: mergedMov })
     });
   } catch(e) { console.warn("Firebase sync error (dados salvos localmente):", e.message); }
 }
@@ -329,11 +328,12 @@ function setupMediaToggle() {
 
   function switchTo(type) {
     mediaType = type;
+    ratings = ratingsStore[type === "tv" ? "tv" : "movie"]; // troca o ponteiro
     btnMovies.classList.toggle("active", type === "movie");
     btnSeries.classList.toggle("active", type === "tv");
     page = 1;
-    const rated = new Set(Object.keys(ratings));
-    queue = queue.filter(id => rated.has(id));
+    _strategyIndex = 0;
+    queue = [];
     setupGenreBar();
     loadContent().then(rebuildStack);
   }
