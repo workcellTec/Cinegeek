@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <meta name="theme-color" content="#0a0b0e"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="CineGeek"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <title>CineGeek</title>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="icon-192.png"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:ital,wght@1,700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen hidden">
+  <div class="login-box">
+    <div class="login-icon">🎬</div>
+    <div class="login-title">CINEGEEK</div>
+    <div class="login-sub">Seu tracker de filmes pessoal</div>
+
+    <!-- Mode selector -->
+    <div class="login-mode-tabs">
+      <button class="login-mode-btn active" id="tab-criar" onclick="switchLoginMode('criar')">Criar conta</button>
+      <button class="login-mode-btn" id="tab-entrar" onclick="switchLoginMode('entrar')">Entrar</button>
+    </div>
+
+    <input id="login-username" class="login-input" type="text" placeholder="Nome de usuário" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false"/>
+    <button id="login-btn" class="login-btn">Criar conta</button>
+    <p id="login-error" class="login-error hidden">.</p>
+  </div>
+</div>
+
+<div id="splash">
+  <div class="splash-icon">🎬</div>
+  <div class="splash-title">CINEGEEK</div>
+  <div class="splash-sub">carregando...</div>
+</div>
+
+<div id="ambilight"></div>
+
+<div id="app" class="hidden">
+
+  <!-- HEADER: logo + segmented toggle -->
+  <header>
+    <div class="h-left">
+      <div class="h-logo-bar"></div>
+      <div class="h-logo">CINE<span>Geek</span></div>
+    </div>
+
+    <div class="media-seg">
+      <button class="seg-opt active" id="seg-movies">Filmes</button>
+      <button class="seg-opt" id="seg-series">Séries</button>
+    </div>
+  </header>
+
+  <!-- SWIPE TAB -->
+  <section id="tab-swipe" class="tab active">
+    <div class="genre-bar" id="genre-bar"></div>
+
+    <div class="how-to-wrap">
+      <button class="how-to-pill" id="how-to-btn">▸ como usar?</button>
+    </div>
+
+    <div class="card-stack-wrap">
+      <div class="card-stack" id="card-stack">
+        <div style="color:#475569;text-align:center;padding:40px 0">
+          <div class="dot-loader"><span></span><span></span><span></span></div>
+          <p style="margin-top:14px">Carregando...</p>
+        </div>
+      </div>
+
+      <!-- FLOATING IA + QUIZ BUTTONS -->
+      <div class="float-btns">
+        <button class="float-btn float-btn-ia" id="ai-btn">
+          <span class="float-btn-icon">✨</span>
+          <span class="float-btn-label">IA</span>
+        </button>
+        <button class="float-btn float-btn-quiz" id="quiz-btn">
+          <span class="float-btn-icon">🎯</span>
+          <span class="float-btn-label">Quiz I.A</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS TAB -->
+  <section id="tab-stats" class="tab">
+    <div class="stats-container" id="stats-container">
+      <div class="empty-state">Avalie filmes para ver seus stats!</div>
+    </div>
+
+  </section>
+
+  <!-- LIST TAB -->
+  <section id="tab-list" class="tab">
+    <div class="list-filters">
+      <button class="list-filter-btn active" data-filter="loved">❤️ Amei</button>
+      <button class="list-filter-btn" data-filter="meh">😐 Ok</button>
+      <button class="list-filter-btn" data-filter="disliked">👎 Não curti</button>
+      <button class="list-filter-btn" data-filter="watchlist">👁️ Quero ver</button>
+    </div>
+    <div class="list-content" id="list-content"></div>
+  </section>
+
+  <!-- PERFIL TAB -->
+  <section id="tab-perfil" class="tab">
+    <div class="perfil-container">
+      <div class="perfil-avatar">👤</div>
+      <div class="perfil-username" id="perfil-username-display"></div>
+      <div class="perfil-since">seus dados estão salvos na nuvem ☁️</div>
+      <button class="perfil-logout-btn" onclick="showLoginScreen()">↩ Trocar usuário</button>
+    </div>
+  </section>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <button class="bn-btn active" id="nav-discover">
+      <span class="bn-icon">⊞</span>
+      <span class="bn-label">Descobrir</span>
+    </button>
+    <button class="bn-btn" id="nav-stats">
+      <span class="bn-icon">▦</span>
+      <span class="bn-label">Stats</span>
+    </button>
+    <button class="bn-btn" id="nav-list">
+      <span class="bn-icon">≡</span>
+      <span class="bn-label">Lista</span>
+    </button>
+    <button class="bn-btn" id="nav-perfil">
+      <span class="bn-icon">👤</span>
+      <span class="bn-label" id="nav-perfil-label">Perfil</span>
+    </button>
+  </nav>
+
+</div>
+
+<!-- DETAIL SHEET -->
+<div class="detail-modal hidden" id="detail-modal">
+  <div class="detail-backdrop" onclick="closeDetailSheet()"></div>
+  <div class="detail-sheet" id="detail-sheet">
+    <div class="detail-drag-handle"></div>
+    <div id="detail-content"></div>
+  </div>
+</div>
+
+<!-- FLIP MODAL -->
+<div class="flip-modal hidden" id="flip-modal">
+  <div id="rec-anim-overlay" class="rec-anim-overlay hidden">
+    <div id="rec-anim-card" class="rec-anim-card"></div>
+    <div id="rec-anim-target" class="rec-anim-target"></div>
+  </div>
+
+  <button class="flip-close" id="flip-close">×</button>
+  <div class="flip-scene" id="flip-scene">
+    <div class="flip-card">
+      <div class="flip-front">
+        <div class="flip-front-glow"></div>
+        <div class="flip-front-icon">✨</div>
+        <div class="flip-front-text">INDICAÇÃO</div>
+        <div class="flip-front-sub">da IA</div>
+        <div class="flip-front-sparkles">⭐ ⭐ ⭐</div>
+      </div>
+      <div class="flip-back">
+        <div id="flip-back-content">
+          <div class="flip-loading">
+            <div class="dot-loader"><span></span><span></span><span></span></div>
+            <p>Analisando...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- QUIZ MODAL -->
+<div class="quiz-modal hidden" id="quiz-modal">
+  <div class="quiz-sheet">
+    <button class="quiz-close" id="quiz-close">×</button>
+    <div class="quiz-body" id="quiz-body"></div>
+  </div>
+</div>
+
+<!-- TUTORIAL MODAL -->
+<div class="tut-modal hidden" id="tut-modal">
+  <div class="tut-sheet">
+    <button class="tut-close" id="tut-close">×</button>
+    <div class="tut-slides" id="tut-slides">
+      <div class="tut-slide active" data-slide="0">
+        <div class="tut-card-wrap">
+          <div class="tut-card tut-animate-right">
+            <div class="tut-poster">🎬</div>
+            <div class="tut-stamp tut-stamp-love">❤️ AMEI</div>
+          </div>
+          <div class="tut-arrow tut-arrow-right">→</div>
+        </div>
+        <div class="tut-text">
+          <div class="tut-gesture">Arraste pra direita</div>
+          <div class="tut-title">❤️ Amei!</div>
+          <div class="tut-desc">Filme ou série que você adorou. A IA aprende com seus gostos.</div>
+        </div>
+      </div>
+      <div class="tut-slide" data-slide="1">
+        <div class="tut-card-wrap">
+          <div class="tut-arrow tut-arrow-left">←</div>
+          <div class="tut-card tut-animate-left">
+            <div class="tut-poster">🎬</div>
+            <div class="tut-stamp tut-stamp-nope">👎 NÃO</div>
+          </div>
+        </div>
+        <div class="tut-text">
+          <div class="tut-gesture">Arraste pra esquerda</div>
+          <div class="tut-title">👎 Não curti</div>
+          <div class="tut-desc">Não é pra você. A IA para de sugerir coisas parecidas.</div>
+        </div>
+      </div>
+      <div class="tut-slide" data-slide="2">
+        <div class="tut-card-wrap">
+          <div class="tut-card tut-animate-down">
+            <div class="tut-poster">🎬</div>
+            <div class="tut-stamp tut-stamp-meh">😐 OK</div>
+          </div>
+          <div class="tut-arrow tut-arrow-down">↓</div>
+        </div>
+        <div class="tut-text">
+          <div class="tut-gesture">Arraste pra baixo</div>
+          <div class="tut-title">😐 Mais ou menos</div>
+          <div class="tut-desc">Assistiu mas não se empolgou muito.</div>
+        </div>
+      </div>
+      <div class="tut-slide" data-slide="3">
+        <div class="tut-card-wrap">
+          <div class="tut-arrow tut-arrow-up">↑</div>
+          <div class="tut-card tut-animate-up">
+            <div class="tut-poster">🎬</div>
+            <div class="tut-stamp tut-stamp-skip">⏭️ PULAR</div>
+          </div>
+        </div>
+        <div class="tut-text">
+          <div class="tut-gesture">Arraste pra cima</div>
+          <div class="tut-title">⏭️ Pular</div>
+          <div class="tut-desc">Não quer avaliar agora. Some sem ficar em nenhuma lista.</div>
+        </div>
+      </div>
+      <div class="tut-slide" data-slide="4">
+        <div class="tut-card-wrap">
+          <div class="tut-card">
+            <div class="tut-poster">🎬</div>
+            <div class="tut-tap-ring tut-tap-1"></div>
+            <div class="tut-tap-ring tut-tap-2"></div>
+          </div>
+        </div>
+        <div class="tut-text">
+          <div class="tut-gesture">1 toque</div>
+          <div class="tut-title">📋 Ver detalhes</div>
+          <div class="tut-desc">Abre sinopse completa e os botões de avaliação.</div>
+        </div>
+      </div>
+      <div class="tut-slide" data-slide="5">
+        <div class="tut-card-wrap">
+          <div class="tut-card tut-animate-doubletap">
+            <div class="tut-poster">🎬</div>
+            <div class="tut-watchlist-badge">👁️ Quero ver!</div>
+            <div class="tut-tap-ring tut-tap-1"></div>
+            <div class="tut-tap-ring tut-tap-2"></div>
+          </div>
+        </div>
+        <div class="tut-text">
+          <div class="tut-gesture">2 toques rápidos</div>
+          <div class="tut-title">👁️ Ver mais tarde</div>
+          <div class="tut-desc">Guarda pra assistir depois. Card fica na pilha pra continuar explorando.</div>
+        </div>
+      </div>
+    </div>
+    <div class="tut-nav">
+      <div class="tut-dots" id="tut-dots">
+        <span class="tut-dot active"></span>
+        <span class="tut-dot"></span>
+        <span class="tut-dot"></span>
+        <span class="tut-dot"></span>
+        <span class="tut-dot"></span>
+        <span class="tut-dot"></span>
+      </div>
+      <button class="tut-next-btn" id="tut-next">Próximo</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST (top) -->
+<div class="toast hidden" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
